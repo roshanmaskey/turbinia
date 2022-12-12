@@ -510,17 +510,17 @@ class BruteForceAnalyzer(AuthAnalyzer):
 
     # Analyzer Output
     analyzer_output = {
-      'platform': 'turbinia',
-      'analyzer_identifier': '',
-      'analyzer_name': self.NAME,
-      'result_status': '',
-      'dfiq_question_id': '',
-      'dfiq_question_conclusion': '',
-      'result_priority': '',
-      'result_summary': '',
-      'result_markdown': '',
-      'references': [],
-      'attributes': ip_reports,
+        'platform': 'turbinia',
+        'analyzer_identifier': '',
+        'analyzer_name': self.NAME,
+        'result_status': '',
+        'dfiq_question_id': '',
+        'dfiq_question_conclusion': '',
+        'result_priority': '',
+        'result_summary': '',
+        'result_markdown': '',
+        'references': [],
+        'attributes': ip_reports,
     }
 
     return analyzer_output
@@ -626,17 +626,17 @@ class LastXDaysAnalyzer(AuthAnalyzer):
 
     # Analyzer Output
     analyzer_output = {
-      'platform': 'turbinia',
-      'analyzer_identifier': '',
-      'analyzer_name': self.NAME,
-      'result_status': '',
-      'dfiq_question_id': '',
-      'dfiq_question_conclusion': '',
-      'result_priority': '',
-      'result_summary': '',
-      'result_markdown': '',
-      'references': [],      
-      'attributes': reports,
+        'platform': 'turbinia',
+        'analyzer_identifier': '',
+        'analyzer_name': self.NAME,
+        'result_status': '',
+        'dfiq_question_id': '',
+        'dfiq_question_conclusion': '',
+        'result_priority': '',
+        'result_summary': '',
+        'result_markdown': '',
+        'references': [],
+        'attributes': reports,
     }
 
     return analyzer_output
