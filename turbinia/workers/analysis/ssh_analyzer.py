@@ -109,7 +109,46 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
 
   def read_logs(self, log_dir: str) -> pd.DataFrame:
     """Read SSH authentication logs."""
-    return pd.DataFrame()
+    ssh_records = []
+
+    for log_filename in os.listdir(log_dir):
+      if not log_filename.startswith(
+            'auth.log') and not log_filename.startswith('secure'):
+        continue
+      log_file = os.path.join(log_dir, log_filename)
+      log.debug(f'log direcotry {log_dir}')
+
+      # Handle log archive
+      if log_filename.endswith('.gz'):
+        with gzip.open(log_file, 'rt') as fh:
+          log_data = fh.read()
+          records = self.read_log_data(log_data)
+          if not records:
+            log.info(f'no ssh events in {log_filename}')
+            continue
+          ssh_records += records
+
+      # Handle standard log file
+      try:
+        with open(log_file, 'r') as fh:
+          log_data = fh.read()
+          records = self.read_log_data(log_data)
+          if not records:
+            log.info(f'no ssh events in {log_filename}') 
+            continue
+          ssh_records += records
+      except FileNotFoundError:
+        log.error(f'log {log_file} does not exist')
+        continue
+
+    if not ssh_records:
+      return pd.DataFrame()
+    
+    ssh_data = []
+    for ssh_record in ssh_records:
+      ssh_data.append(ssh_record.__dict__)
+    df = pd.DataFrame(ssh_data)
+    return df
 
   def read_log_data(self, data, log_year: int = None) -> List:
     """ Parses SSH authentication log."""
