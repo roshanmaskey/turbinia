@@ -113,7 +113,7 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
 
     for log_filename in os.listdir(log_dir):
       if not log_filename.startswith(
-            'auth.log') and not log_filename.startswith('secure'):
+          'auth.log') and not log_filename.startswith('secure'):
         continue
       log_file = os.path.join(log_dir, log_filename)
       log.debug(f'log direcotry {log_dir}')
@@ -134,7 +134,7 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
           log_data = fh.read()
           records = self.read_log_data(log_data)
           if not records:
-            log.info(f'no ssh events in {log_filename}') 
+            log.info(f'no ssh events in {log_filename}')
             continue
           ssh_records += records
       except FileNotFoundError:
@@ -143,7 +143,7 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
 
     if not ssh_records:
       return pd.DataFrame()
-    
+
     ssh_data = []
     for ssh_record in ssh_records:
       ssh_data.append(ssh_record.__dict__)
