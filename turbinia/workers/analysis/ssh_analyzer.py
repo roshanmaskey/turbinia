@@ -154,7 +154,70 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
     """ Parses SSH authentication log."""
     # check valid year is provided
     # If valid year isn't provided raise error
-    return []
+    if not log_year:
+      current_date = datetime.now()
+      log_year = current_date.year
+      log.warning(f'log year not provided - assuming log year as {log_year}')
+
+    if log_year and (log_year < self.MIN_LOG_YEAR and
+                     log_year > self.MAX_LOG_YEAR):
+      raise TurbiniaException(
+          f'log year {log_year} is outside of acceptable range')
+
+    ssh_records = []
+
+    for key, value_re in SSH_CONNECTION_PATTERN.items():
+      for line in value_re.findall(data):
+        ssh_record = {}
+
+        if key == 'accepted':
+          event_type = 'authentication'
+          auth_method = line[5]
+          auth_result = 'success'
+          username = line[6]
+          source_ip = line[7]
+          source_port = int(line[8])
+        elif key == 'failed':
+          event_type = 'authentication'
+          auth_method = line[5]
+          auth_result = 'failure'
+          username = line[6]
+          source_ip = line[7]
+          source_port = int(line[8])
+        elif key == 'invalid_user':
+          event_type = 'authentication'
+          auth_method = line[5]
+          auth_result = 'failure'
+          username = line[6]
+          source_ip = line[7]
+          source_port = int(line[8])
+        elif key == 'disconnected':
+          event_type = 'disconnection'
+          auth_method = ''
+          auth_result = 'disconnect'
+          username = line[5]
+          source_ip = line[6]
+          source_port = int(line[7])
+
+        # common log items
+        dt_object = datetime.strptime(
+            f'{line[0]} {line[1]}, {log_year} {line[2]}', '%b %d, %Y %H:%M:%S')
+        timestamp = int(dt_object.strftime('%s'))
+        date = f'{line[0]} {line[1]}'
+        time = line[2]
+        hostname = line[3]
+        pid = int(line[4])
+
+        ssh_event_data = SSHEventData(
+            timestamp=timestamp, date=date, time=time, hostname=hostname,
+            pid=pid, event_key=key, event_type=event_type,
+            auth_method=auth_method, auth_result=auth_result, username=username,
+            source_ip=source_ip, source_port=source_port)
+        ssh_event_data.calculate_session_hash()
+        ssh_records.append(ssh_event_data)
+
+    log.info(f'total number of records {len(ssh_records)}')
+    return ssh_records
 
   def run(self, evidence, result):
     """Run the SSH Auth Analyzer worker.
