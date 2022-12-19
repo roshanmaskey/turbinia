@@ -35,6 +35,7 @@ from turbinia.jobs import postgres_acct
 from turbinia.jobs import psort
 from turbinia.jobs import redis
 from turbinia.jobs import sshd
+from turbinia.jobs import ssh_analyzer
 from turbinia.jobs import strings
 from turbinia.jobs import tomcat
 from turbinia.jobs import volatility
