@@ -29,6 +29,7 @@ from turbinia import TurbiniaException
 from turbinia.evidence import EvidenceState as state
 from turbinia.evidence import ReportText
 from turbinia.lib import text_formatter as fmt
+from turbinia.lib.utils import extract_artifacts
 from turbinia.workers import Priority
 from turbinia.workers import TurbiniaTask
 from turbinia.workers.analysis.auth import BruteForceAnalyzer
@@ -120,7 +121,7 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
 
       # Handle log archive
       if log_filename.endswith('.gz'):
-        with gzip.open(log_file, 'rt') as fh:
+        with gzip.open(log_file, 'rt', encoding='ISO-8859–1') as fh:
           log_data = fh.read()
           records = self.read_log_data(log_data)
           if not records:
@@ -130,7 +131,7 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
 
       # Handle standard log file
       try:
-        with open(log_file, 'r') as fh:
+        with open(log_file, 'r', encoding='ISO-8859–1') as fh:
           log_data = fh.read()
           records = self.read_log_data(log_data)
           if not records:
@@ -241,8 +242,21 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
     output_summary_list = []
     output_report_list = []
 
-    mount_path = evidence.mount_path
-    log_dir = os.path.join(mount_path, 'var', 'log')
+    try:
+      collected_artifacts = extract_artifacts(
+          artifact_names=['LinuxAuthLogs'], disk_path=evidence.local_path,
+          output_dir=self.output_dir, credentials=evidence.credentials)
+    except TurbiniaException as exception:
+      result.close(self, success=False, status=str(exception))
+      return result
+
+    log_dir = os.path.join(self.output_dir, 'var', 'log')
+    result.log(f'Checking log directory {log_dir}')
+
+    if not os.path.exists(log_dir):
+      summary = f'Log directory path {log_dir} does not exist'
+      result.close(self, success=False, status=summary)
+      return result
 
     df = self.read_logs(log_dir=log_dir)
     if not df.empty:
@@ -250,42 +264,53 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
       bfa = BruteForceAnalyzer()
       bfa_result = bfa.run(df)
 
-      bfa_result_summary = bfa_result['result_summary']
-      if bfa_result_summary:
-        output_summary_list.append(bfa_result_summary)
+      if bfa_result:
+        bfa_result_summary = bfa_result['result_summary']
+        if bfa_result_summary:
+          output_summary_list.append(bfa_result_summary)
 
-      bfa_result_markdown = bfa_result['result_markdown']
-      if bfa_result_markdown:
-        output_report_list.append(
-            fmt.heading4(fmt.bold(bfa_result['analyzer_name'])))
-        output_report_list.append(bfa_result_markdown)
-        # TODO(rmaskey): add attributes
+        bfa_result_markdown = bfa_result['result_markdown']
+        if bfa_result_markdown:
+          output_report_list.append(
+              fmt.heading4(fmt.bold(bfa_result['analyzer_name'])))
+          output_report_list.append(bfa_result_markdown)
+          # TODO(rmaskey): add attributes
+      else:
+        output_summary_list.append('No finding for brute force analysis')
+        output_report_list.append('no result for brute force analyzer')
 
       # Check last x-days events
       lxd = LastXDaysAnalyzer()
       lxd_result = lxd.run(df)
-      lxd_result_summary = lxd_result['result_summary']
-      if lxd_result_summary:
-        output_summary_list.append(lxd_result_summary)
+      if lxd_result:
+        lxd_result_summary = lxd_result['result_summary']
+        if lxd_result_summary:
+          output_summary_list.append(lxd_result_summary)
 
-      lxd_result_markdown = lxd_result['result_markdown']
-      if lxd_result_markdown:
-        output_report_list.append(
-            fmt.heading4(fmt.bold(lxd_result['analyzer_name'])))
-        output_report_list.append(lxd_result_markdown)
-        # TODO(rmaskey): add attributes
+        lxd_result_markdown = lxd_result['result_markdown']
+        if lxd_result_markdown:
+          output_report_list.append(
+              fmt.heading4(fmt.bold(lxd_result['analyzer_name'])))
+          output_report_list.append(lxd_result_markdown)
+          # TODO(rmaskey): add attributes
+      else:
+        output_summary_list.append('No finding for last x-days analysis')
+        output_report_list.append('no result for last x-days analysis')
 
     # Handling result
     if output_summary_list:
       analyzer_output_summary = '. '.join(output_summary_list)
     else:
-      analyzer_output_summary = 'No findings'
+      analyzer_output_summary = 'No findings for SSH authenticaiton analyzer.'
 
     if output_report_list:
       analyzer_output_report = '\n'.join(output_report_list)
+    else:
+      analyzer_output_report = 'No finding for SSH authentication analyzer.'
 
     result.report_priority = analyzer_output_priority
     result.report_data = analyzer_output_report
+    output_evidence.text_data = analyzer_output_report
 
     # Write the report to the output file.
     with open(output_file_path, 'wb') as fh:
