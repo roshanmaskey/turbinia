@@ -486,17 +486,17 @@ class BruteForceAnalyzer(AuthAnalyzer):
     """Generate analyzer output"""
 
     analyzer_output = {
-      'platform': 'turbinia',
-      'analyzer_identifier': self.NAME,
-      'analyzer_name': self.DISPLAY_NAME,
-      'result_status': 'failure',
-      'dfiq_question_id': '',
-      'dfiq_question_conclusion': '',
-      'result_priority': 'LOW',
-      'result_summary': '',
-      'result_markdown': '',
-      'references': [],
-      'attributes': reports,
+        'platform': 'turbinia',
+        'analyzer_identifier': self.NAME,
+        'analyzer_name': self.DISPLAY_NAME,
+        'result_status': 'failure',
+        'dfiq_question_id': '',
+        'dfiq_question_conclusion': '',
+        'result_priority': 'LOW',
+        'result_summary': '',
+        'result_markdown': '',
+        'references': [],
+        'attributes': reports,
     }
 
     if not success:
@@ -507,11 +507,12 @@ class BruteForceAnalyzer(AuthAnalyzer):
     # result_priority is set to MEDIUM for any successful brute force detection
     reports_count = len(reports)
     if reports_count > 0:
-      analyzer_output['result_summary'] = f'Brute force from {reports_count} IP addresses'
+      analyzer_output[
+          'result_summary'] = f'Brute force from {reports_count} IP addresses'
       analyzer_output['result_priority'] = 'MEDIUM'
     else:
       analyzer_output['result_summary'] = 'No brute force detected'
-    
+
     # Generate result_markdown
     markdown = []
 
@@ -519,28 +520,49 @@ class BruteForceAnalyzer(AuthAnalyzer):
       markdown.append(f'### Brute Force from {report["source_ip"]}\n')
 
       for brute_force_login in report['brute_force_logins']:
-        markdown.append(f'- Successful brute force from {brute_force_login["source_ip"]} as {brute_force_login["username"]} at {self.human_timestamp(brute_force_login["login_timestamp"])} (duration={brute_force_login["session_duration"]})')
+        markdown.append(
+            f'- Successful brute force from {brute_force_login["source_ip"]} as'
+            f' {brute_force_login["username"]} at'
+            f' {self.human_timestamp(brute_force_login["login_timestamp"])}'
+            f' (duration={brute_force_login["session_duration"]})')
+
         if brute_force_login['session_duration'] > 600:
-          markdown.append('**NOTE**: Long login duration (>10 minutes). Potentially human activity')
-      
+          markdown.append(
+              f'**NOTE**: Long login duration (>10 minutes).'
+              f' Potentially human activity')
+
       markdown.append('\n#### IP Summaries\n')
       for ip_summary in report["ip_summaries"]:
         markdown.append(f'- Source IP: {ip_summary["source_ip"]}')
-        markdown.append(f'- Brute forcing IP first seen: {self.human_timestamp(ip_summary["first_seen"])}')
-        markdown.append(f'- Brute forcing IP last seen: {self.human_timestamp(ip_summary["last_seen"])}')
+        markdown.append(
+            f'- Brute forcing IP first seen:'
+            f' {self.human_timestamp(ip_summary["first_seen"])}')
+        markdown.append(
+            f'- Brute forcing IP last seen:'
+            f' {self.human_timestamp(ip_summary["last_seen"])}')
         markdown.append(f'- First successful login for brute forcing IP')
         markdown.append(f'    - IP: {ip_summary["first_auth_ip"]}')
-        markdown.append(f'    - Login timestamp: {self.human_timestamp(ip_summary["first_auth_timestamp"])}')
+        markdown.append(
+            f'    - Login timestamp:'
+            f' {self.human_timestamp(ip_summary["first_auth_timestamp"])}')
         markdown.append(f'    - Username: {ip_summary["first_auth_username"]}')
-        markdown.append(f'- Total successful login from IP: {ip_summary["total_success_events"]}')
-        markdown.append(f'- Total failed login attempts: {ip_summary["total_failed_events"]}')
+        markdown.append(
+            f'- Total successful login from IP:'
+            f' {ip_summary["total_success_events"]}')
+        markdown.append(
+            f'- Total failed login attempts:'
+            f' {ip_summary["total_failed_events"]}')
 
         success_ip = ', '.join(ip_summary['success_source_ip_list'])
-        markdown.append(f'- IP addresses that successfully logged in: {success_ip}')
+        markdown.append(
+            f'- IP addresses that successfully logged in: {success_ip}')
 
         success_usernames = ', '.join(ip_summary['success_username_list'])
-        markdown.append(f'- Usernames that successfully logged in: {success_usernames}')
-        markdown.append(f'- Total number of unique username attempted: {ip_summary["distinct_username_count"]}')
+        markdown.append(
+            f'- Usernames that successfully logged in: {success_usernames}')
+        markdown.append(
+            f'- Total number of unique username attempted:'
+            f' {ip_summary["distinct_username_count"]}')
         markdown.append('- Top 10 username attempted')
         for username, count in ip_summary['top_usernames'].items():
           markdown.append(f'    - {username}: {count}')
