@@ -63,7 +63,7 @@ class SSHEventData:
   def __init__(
       self, timestamp: int, date: str, time: str, hostname: str, pid: int,
       event_key: str, event_type: str, auth_method: str, auth_result: str,
-      username: str, source_ip: str, source_port: int):
+      username: str, source_ip: str, source_port: int, source_hostname: str):
     self.timestamp = timestamp
     self.date = date
     self.time = time
@@ -77,16 +77,17 @@ class SSHEventData:
     self.username = username
     self.source_ip = source_ip
     self.source_port = source_port
-    self.session_hash = None
+    self.source_hostname = source_hostname
+    self.session_id = None
 
-  def calculate_session_hash(self) -> None:
+  def calculate_session_id(self) -> None:
     hash_data = (
         f'{self.date}|{self.hostname}|{self.username}|{self.source_ip}|'
         f'{self.source_port}')
 
     h = hashlib.new('sha256')
     h.update(str.encode(hash_data))
-    self.session_hash = h.hexdigest()
+    self.session_id = h.hexdigest()
 
 
 class LinuxSSHAuthAnalysisTask(TurbiniaTask):
@@ -213,8 +214,8 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
             timestamp=timestamp, date=date, time=time, hostname=hostname,
             pid=pid, event_key=key, event_type=event_type,
             auth_method=auth_method, auth_result=auth_result, username=username,
-            source_ip=source_ip, source_port=source_port)
-        ssh_event_data.calculate_session_hash()
+            source_ip=source_ip, source_port=source_port, source_hostname='')
+        ssh_event_data.calculate_session_id()
         ssh_records.append(ssh_event_data)
 
     log.info(f'total number of records {len(ssh_records)}')
@@ -259,45 +260,51 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
       return result
 
     df = self.read_logs(log_dir=log_dir)
-    if not df.empty:
-      # Check for brute force
-      bfa = BruteForceAnalyzer()
-      bfa_result = bfa.run(df)
+    if df.empty:
+      summary = f'Empty dataframes from the logs in {log_dir}.'
+      result.close(self, success=False, status=summary)
+      return result
 
-      if bfa_result:
-        bfa_result_summary = bfa_result['result_summary']
-        if bfa_result_summary:
-          output_summary_list.append(bfa_result_summary)
+    # 01. Brute Force Analyzer
+    bfa = BruteForceAnalyzer()
+    bfa_result = bfa.run(df)
 
-        bfa_result_markdown = bfa_result['result_markdown']
-        if bfa_result_markdown:
-          output_report_list.append(
-              fmt.heading4(fmt.bold(bfa_result['analyzer_name'])))
-          output_report_list.append(bfa_result_markdown)
-          # TODO(rmaskey): add attributes
-      else:
-        output_summary_list.append('No finding for brute force analysis')
-        output_report_list.append('no result for brute force analyzer')
+    if bfa_result:
+      bfa_result_summary = bfa_result['result_summary']
+      if bfa_result_summary:
+        output_summary_list.append(bfa_result_summary)
 
-      # Check last x-days events
-      lxd = LastXDaysAnalyzer()
-      lxd_result = lxd.run(df)
-      if lxd_result:
-        lxd_result_summary = lxd_result['result_summary']
-        if lxd_result_summary:
-          output_summary_list.append(lxd_result_summary)
+      bfa_result_markdown = bfa_result['result_markdown']
+      if bfa_result_markdown:
+        output_report_list.append(
+            fmt.heading4(fmt.bold(bfa_result['analyzer_name'])))
+        output_report_list.append(bfa_result_markdown)
+        # TODO(rmaskey): add attributes
+    else:
+      output_summary_list.append('No finding for brute force analysis')
+      output_report_list.append('no result for brute force analyzer')
 
-        lxd_result_markdown = lxd_result['result_markdown']
-        if lxd_result_markdown:
-          output_report_list.append(
-              fmt.heading4(fmt.bold(lxd_result['analyzer_name'])))
-          output_report_list.append(lxd_result_markdown)
-          # TODO(rmaskey): add attributes
-      else:
-        output_summary_list.append('No finding for last x-days analysis')
-        output_report_list.append('no result for last x-days analysis')
+    # 02. Last X-Days Analyzer
+    lxd = LastXDaysAnalyzer()
+    lxd_result = lxd.run(df)
+    if lxd_result:
+      lxd_result_summary = lxd_result['result_summary']
+      if lxd_result_summary:
+        output_summary_list.append(lxd_result_summary)
 
-    # Handling result
+      lxd_result_markdown = lxd_result['result_markdown']
+      if lxd_result_markdown:
+        output_report_list.append(
+            fmt.heading4(fmt.bold(lxd_result['analyzer_name'])))
+        output_report_list.append(lxd_result_markdown)
+        # TODO(rmaskey): add attributes
+    else:
+      output_summary_list.append('No finding for last x-days analysis')
+      output_report_list.append('no result for last x-days analysis')
+
+    # 03. NICE Analyzer
+
+    # 04. Handling result
     if output_summary_list:
       analyzer_output_summary = '. '.join(output_summary_list)
     else:
@@ -312,7 +319,7 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
     result.report_data = analyzer_output_report
     output_evidence.text_data = analyzer_output_report
 
-    # Write the report to the output file.
+    # 05. Write the report to the output file.
     with open(output_file_path, 'wb') as fh:
       fh.write(output_evidence.text_data.encode('utf-8'))
 
