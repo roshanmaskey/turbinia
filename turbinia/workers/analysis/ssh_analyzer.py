@@ -276,33 +276,32 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
 
       bfa_result_markdown = bfa_result['result_markdown']
       if bfa_result_markdown:
-        output_report_list.append(
-            fmt.heading4(fmt.bold(bfa_result['analyzer_name'])))
         output_report_list.append(bfa_result_markdown)
         # TODO(rmaskey): add attributes
     else:
       output_summary_list.append('No finding for brute force analysis')
-      output_report_list.append('no result for brute force analyzer')
+      output_report_list.append('## Brute Force Analysis\n')
+      output_report_list.append('- No findings for brute force analysis')
 
     # 02. Last X-Days Analyzer
     lxd = LastXDaysAnalyzer()
     lxd_result = lxd.run(df)
     if lxd_result:
-      lxd_result_summary = lxd_result['result_summary']
+      lxd_result_summary = lxd_result.get('result_summary') or ''
       if lxd_result_summary:
         output_summary_list.append(lxd_result_summary)
 
-      lxd_result_markdown = lxd_result['result_markdown']
+      lxd_result_markdown = lxd_result.get('result_markdown') or ''
       if lxd_result_markdown:
-        output_report_list.append(
-            fmt.heading4(fmt.bold(lxd_result['analyzer_name'])))
         output_report_list.append(lxd_result_markdown)
         # TODO(rmaskey): add attributes
     else:
       output_summary_list.append('No finding for last x-days analysis')
-      output_report_list.append('no result for last x-days analysis')
+      output_report_list.append('## Last X-Days Analysis\n')
+      output_report_list.append('- No findings for x-days analysis.')
 
     # 03. NICE Analyzer
+    # TODO (rmaskey): NICE analysis
 
     # 04. Handling result
     if output_summary_list:
