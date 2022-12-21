@@ -36,6 +36,8 @@ from turbinia.workers.analysis.auth import BruteForceAnalyzer
 from turbinia.workers.analysis.auth import LastXDaysAnalyzer
 
 log = logging.getLogger('turbinia')
+FORMAT = '[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s'
+logging.basicConfig(format=FORMAT)
 
 SSH_CONNECTION_PATTERN = {
     'accepted':
@@ -117,34 +119,41 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
       if not log_filename.startswith(
           'auth.log') and not log_filename.startswith('secure'):
         continue
+
       log_file = os.path.join(log_dir, log_filename)
-      log.debug(f'log direcotry {log_dir}')
+      log.debug(f'Processing authentication log {log_file}')
 
       # Handle log archive
       if log_filename.endswith('.gz'):
-        with gzip.open(log_file, 'rt', encoding='ISO-8859–1') as fh:
-          log_data = fh.read()
-          records = self.read_log_data(log_data)
-          if not records:
-            log.info(f'no ssh events in {log_filename}')
-            continue
-          ssh_records += records
+        try:
+          with gzip.open(log_file, 'rt', encoding='ISO-8859–1') as fh:
+            log_data = fh.read()
+            records = self.read_log_data(log_data, log_filename=log_filename)
+            if records:
+              ssh_records += records
+        except gzip.BadGzipFile as e:
+          log.error(f'Error opening a bad gzip file {str(e)}')
+        finally:
+          continue
 
       # Handle standard log file
       try:
         with open(log_file, 'r', encoding='ISO-8859–1') as fh:
           log_data = fh.read()
-          records = self.read_log_data(log_data)
-          if not records:
-            log.info(f'no ssh events in {log_filename}')
-            continue
-          ssh_records += records
+          records = self.read_log_data(log_data, log_filename=log_filename)
+          if records:
+            ssh_records += records
       except FileNotFoundError:
-        log.error(f'log {log_file} does not exist')
+        log.error(f'{log_file} does not exist')
+      finally:
         continue
 
     if not ssh_records:
+      log.info(f'No SSH authenticaiton events in {log_dir}')
       return pd.DataFrame()
+    log.info(
+        f'Total number of SSH authentication events {len(ssh_records)} in {log_dir}.'
+    )
 
     ssh_data = []
     for ssh_record in ssh_records:
@@ -152,19 +161,23 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
     df = pd.DataFrame(ssh_data)
     return df
 
-  def read_log_data(self, data, log_year: int = None) -> List:
+  def read_log_data(
+      self, data, log_filename: str, log_year: int = None) -> List:
     """ Parses SSH authentication log."""
     # check valid year is provided
     # If valid year isn't provided raise error
     if not log_year:
       current_date = datetime.now()
       log_year = current_date.year
-      log.warning(f'log year not provided - assuming log year as {log_year}')
+      log.warning(
+          f'Log year not provided in {log_filename} - assuming log year as'
+          f' {log_year}')
 
     if log_year and (log_year < self.MIN_LOG_YEAR and
                      log_year > self.MAX_LOG_YEAR):
       raise TurbiniaException(
-          f'log year {log_year} is outside of acceptable range')
+          f'Log year {log_year} is outside of acceptable range in {log_filename}'
+      )
 
     ssh_records = []
 
@@ -218,7 +231,8 @@ class LinuxSSHAuthAnalysisTask(TurbiniaTask):
         ssh_event_data.calculate_session_id()
         ssh_records.append(ssh_event_data)
 
-    log.info(f'total number of records {len(ssh_records)}')
+    log.info(
+        f'Total number of SSH records {len(ssh_records)} in {log_filename}')
     return ssh_records
 
   def run(self, evidence, result):
