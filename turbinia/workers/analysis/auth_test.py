@@ -23,7 +23,7 @@ from turbinia.workers.analysis.auth import AuthAnalyzer
 from turbinia.workers.analysis.auth import BruteForceAnalyzer
 from turbinia.workers.analysis.auth import LastXDaysAnalyzer
 
-log = logging.getLogger('auth_analyzer')
+log = logging.getLogger('turbinia')
 log.setLevel(logging.DEBUG)
 
 

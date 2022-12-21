@@ -21,6 +21,8 @@ from datetime import datetime
 from typing import List
 
 log = logging.getLogger('turbinia')
+FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
+logging.basicConfig(format=FORMAT)
 
 
 class AuthAnalyzerError:
@@ -97,6 +99,7 @@ class AuthAnalyzer:
     description (str): Brief description about the analyzer
     df (pd.DataFrame): Authentication dataframe
   """
+  NAME = 'auth.analyzer'
 
   REQUIRED_ATTRIBUTES = [
       'timestamp', 'event_type', 'auth_method', 'auth_result', 'hostname',
@@ -113,9 +116,9 @@ class AuthAnalyzer:
       description (str): Brief description of the analyzer
     """
     if not name:
-      raise AuthAnalyzerError('analyzer name is required')
+      raise AuthAnalyzerError('[{self.NAME}] Analyzer name is required')
     if not display_name:
-      raise AuthAnalyzerError('analyzer display name is required')
+      raise AuthAnalyzerError('[{self.NAME}] Analyzer display name is required')
 
     self.name = name
     self.display_name = display_name
@@ -135,7 +138,7 @@ class AuthAnalyzer:
     # matches the required fields
     column_list = df.columns.tolist()
     if not self.check_required_fields(column_list):
-      log.error(f'dataframe does not match required columns')
+      log.error(f'[{self.NAME}] Dataframe does not match required columns')
       return False
 
     df.fillna('', inplace=True)
@@ -155,7 +158,7 @@ class AuthAnalyzer:
 
     for req_field in self.REQUIRED_ATTRIBUTES:
       if req_field not in fields:
-        log.error(f'missing required field {req_field}')
+        log.error(f'[{self.NAME}] Missing required field {req_field}')
         return False
     return True
 
@@ -170,13 +173,13 @@ class AuthAnalyzer:
     """
 
     if self.df.empty:
-      log.info(f'source dataframe is empty')
+      log.info(f'Source dataframe is empty')
       return {}
     df = self.df
 
     df1 = df[df['source_ip'] == source_ip]
     if df1.empty:
-      log.info(f'{source_ip}: no data for source ip')
+      log.info(f'No data for source IP {source_ip}')
       return {}
     return self.get_auth_summary(
         df1=df1, summary_type='source_ip', value=source_ip)
@@ -192,13 +195,13 @@ class AuthAnalyzer:
       dict: user summary information as dictionary
     """
     if self.df.empty:
-      log.info(f'source dataframe is empty')
+      log.info(f'Source dataframe is empty')
       return {}
     df = self.df
 
     df1 = df[(df['domain'] == domain) & (df['username'] == username)]
     if df1.empty:
-      log.info(f'user summary dataframe is empty')
+      log.info(f'User summary for {username} dataframe is empty')
       return {}
 
     df1.sort_values(by='timestamp', ascending=True)
@@ -223,7 +226,7 @@ class AuthAnalyzer:
       summary.domain = domain
       summary.username = username
     else:
-      log.error(f'unsupported summary_type value {summary_type}')
+      log.error(f'Unsupported summary type value {summary_type}')
       return summary
 
     # First and last time the brute forcing IP address was observed
@@ -305,7 +308,7 @@ class AuthAnalyzer:
     }
 
     if self.df.empty:
-      log.debug('source dataframe is empty')
+      log.debug(f'[{self.NAME}] Source dataframe is empty')
       return login_session
     df = self.df
     try:
@@ -323,7 +326,7 @@ class AuthAnalyzer:
       login_session['logout_timestamp'] = logout_ts
       login_session['session_duration'] = session_duration
     except:
-      log.error(f'failed to calcuate session duration')
+      log.error(f'[{self.NAME}] Failed to calcuate session duration')
     finally:
       return login_session
 
@@ -359,21 +362,22 @@ class BruteForceAnalyzer(AuthAnalyzer):
     """Perform authentication analysis per souce IP"""
 
     if self.df.empty:
-      log.info(f'source dataframe is empty')
+      log.info(f'[{self.NAME}] Source dataframe is empty')
       return {}
     df = self.df
 
     source_df = df[(df['source_ip'] == source_ip)]
     if source_df.empty:
-      log.info(f'{source_ip}: login analysis dataframe is empty')
+      log.info(
+          f'[{self.NAME}] Login analysis dataframe for {source_ip} is empty')
       return {}
 
     success_df = source_df[source_df['auth_result'] == 'success']
     if success_df.empty:
-      log.info(f'{source_ip}: no successful login dataframe')
+      log.info(f'[{self.NAME}] No successful login data for {source_ip}')
       return {}
 
-    # A same IP address can perform multiple brute force attempts
+    # Same IP address can perform multiple brute force attempts
     # and have successful login.
     #
     # We need to capture that.
@@ -387,8 +391,9 @@ class BruteForceAnalyzer(AuthAnalyzer):
       start_timestamp = login_ts - self.BRUTE_FORCE_WINDOW
       end_timestamp = login_ts
       log.info(
-          f'{source_ip}: checking bruteforce between {start_timestamp}'
-          f' and {end_timestamp}')
+          f'[{self.NAME}] Checking brute force from {source_ip} between'
+          f' {self.human_timestamp(start_timestamp)}'
+          f' and {self.human_timestamp(end_timestamp)}')
 
       df1 = source_df[(source_df['timestamp'] >= start_timestamp)
                       & (source_df['timestamp'] < end_timestamp) &
@@ -399,27 +404,27 @@ class BruteForceAnalyzer(AuthAnalyzer):
         success_count = df2['success']
       except KeyError:
         log.info(
-            f'{source_ip}: no successful login events - setting success_count'
-            f' to zero')
+            f'[{self.NAME}] No successful login events for {source_ip}.'
+            f' Setting success_count to zero')
         success_count = 0
 
       try:
         failed_count = df2['failure']
       except KeyError:
         log.info(
-            f'{source_ip}: no failed login events - setting failed_count to'
-            f' zero')
+            f'[{self.NAME}] No failed login events for {source_ip}.'
+            f' Setting failed_count to zero')
         failed_count = 0
 
       log.debug(
-          f'{source_ip}: login events distribution: successful {success_count},'
-          f' failure {failed_count}')
+          f'[{self.NAME}] Login events distribution from {source_ip}: successful'
+          f' {success_count}, failure {failed_count}')
 
       if success_count == 0 and failed_count >= self.BRUTE_FORCE_MIN_FAILED_EVENT:
         # TODO(rmaskey): Evaluate event timestamps
-        row_session_id = row['session_id']
-        row_domain = row['domain']
-        row_username = row['username']
+        row_session_id = row.get('session_id') or ''
+        row_domain = row.get('domain')
+        row_username = row.get('username')
 
         brute_force_records.append(
             self.get_login_session(
@@ -428,7 +433,7 @@ class BruteForceAnalyzer(AuthAnalyzer):
 
     # We only need to add enrichment steps if we have successful brute force.
     log.debug(
-        f'{source_ip}: total number of brute force records'
+        f'[{self.NAME}] Total number of brute force records from {source_ip} is'
         f' {len(brute_force_records)}')
     if not brute_force_records:
       return {}
@@ -438,11 +443,14 @@ class BruteForceAnalyzer(AuthAnalyzer):
     ip_summaries = []
     username_summaries = []
 
-    ip_summary = self.get_ip_summary(source_ip=source_ip)
-    if not ip_summary:
-      log.info(f'no ip summary for {source_ip}')
-    else:
-      ip_summaries.append(ip_summary.report())
+    try:  
+      ip_summary = self.get_ip_summary(source_ip=source_ip)
+      if not ip_summary:
+        log.info(f'[{self.NAME}] No IP summary for {source_ip}')
+      else:
+        ip_summaries.append(ip_summary.report())
+    except:
+      log.error(f'[{self.NAME}] Failed to get IP summary for {source_ip}')
 
     # username summaries
     # There could be more than one username that was successfully
@@ -458,19 +466,28 @@ class BruteForceAnalyzer(AuthAnalyzer):
     checked_user_accounts = []
 
     for record in brute_force_records:
-      domain = record['domain']
-      username = record['username']
+      domain = record.get('domain')
+      username = record.get('username')
       user_account = f'{domain}_{username}'
 
-      log.debug(f'checking for domain:{domain}, username: {username}')
+      log.debug(
+          f'[{self.NAME}] Checking for domain:{domain}, username: {username}')
       if user_account in checked_user_accounts:
-        log.debug(f'skipping user account {user_account} - already checked')
+        log.debug(
+            f'[{self.NAME}] Skipping user account {user_account}. User account'
+            f' already checked')
         continue
-      user_summary = self.get_user_summary(domain=domain, username=username)
-      if not user_summary:
-        log.info(f'no user summary for domain: {domain}, username: {username}')
-        continue
-      username_summaries.append(user_summary.report())
+
+      try:
+        user_summary = self.get_user_summary(domain=domain, username=username)
+        if not user_summary:
+          log.info(
+              f'[{self.NAME}] No user summary for domain: {domain},'
+              f' username: {username}')
+          continue
+        username_summaries.append(user_summary.report())
+      except:
+        log.error(f'[{self.NAME}] Failed to get user summary for {username}')
 
     # Analysis report on the source_ip.
     ip_analysis_report = {
@@ -515,6 +532,7 @@ class BruteForceAnalyzer(AuthAnalyzer):
 
     # Generate result_markdown
     markdown = []
+    markdown.append('## Brute Force Analysis\n')
 
     for report in reports:
       markdown.append(f'### Brute Force from {report["source_ip"]}\n')
@@ -582,10 +600,10 @@ class BruteForceAnalyzer(AuthAnalyzer):
       AnalyzerResult: Result as AnalyzerResult object.
     """
     if df.empty:
-      raise AuthAnalyzerError('dataframe is empty')
+      raise AuthAnalyzerError('[{self.NAME}] Dataframe is empty')
 
     if not self.set_dataframe(df):
-      log.error(f'dataframe does not match the columns requirements')
+      log.error(f'[{self.NAME}] Dataframe does not match the columns requirements')
       return {}
 
     ip_reports = []
@@ -593,10 +611,10 @@ class BruteForceAnalyzer(AuthAnalyzer):
     try:
       df = self.df
       success_ips = df[df['auth_result'] == 'success']['source_ip'].unique()
-      log.info(f'successful source IP addresses {success_ips}')
+      log.info(f'[{self.NAME}] Successful source IP addresses {success_ips}')
 
       for source_ip in success_ips:
-        log.info(f'checking for successful auth for {source_ip}')
+        log.info(f'[{self.NAME}] Checking for successful auth for {source_ip}')
         ip_report = self.login_analysis(source_ip=source_ip)
         if ip_report:
           ip_reports.append(ip_report)
@@ -625,19 +643,22 @@ class LastXDaysAnalyzer(AuthAnalyzer):
         name=self.NAME, display_name=self.DISPLAY_NAME,
         description=self.DESCRIPTION)
 
-  def login_analysis(self, x_days: int = 7) -> dict:
+  def login_analysis(self, x_days: int = 7) -> List:
     """Perform authentication event analysis.
     
     Args:
       x_days (int): Analyze last x days authentication events. Default is 7 days
 
     Returns:
-      dict: Analysis result as a dictionary.
+      List: Analysis result as a list.
     """
-
+    # analysis_data holds zero or more dict containing output of
+    # the analysis.
+    analysis_data = []
+    
     if self.df.empty:
-      log.info(f'source dataframe is empty')
-      return {}
+      log.info(f'[{self.NAME}] Source dataframe is empty')
+      return analysis_data
     df = self.df
 
     # We need to calculate the start and end timestamps.
@@ -646,6 +667,10 @@ class LastXDaysAnalyzer(AuthAnalyzer):
     end_timestamp = ((last_timestamp / 86400) + 1) * 86400
     start_timestamp = ((last_timestamp / 86400) - x_days) * 86400
 
+    log.info(
+        f'[{self.NAME}] Analysis between {self.human_timestamp(start_timestamp)}'
+        f' and {self.human_timestamp(end_timestamp)}')
+  
     # Successful authentication events in last x_days.
     # The successful authentication events are checked regardless of the
     # authentication method e.g. security keys and certificate.
@@ -654,35 +679,153 @@ class LastXDaysAnalyzer(AuthAnalyzer):
                     (df['auth_result'] == 'success')]
     if df_success.empty:
       log.info(
-          f'no successful authentication event between'
+          f'[{self.NAME}] No successful authentication events between'
           f' {self.human_timestamp(start_timestamp)}'
           f' and {self.human_timestamp(end_timestamp)}')
-      return {}
+      return analysis_data
 
-    results = []
-
-    # Check for first time login from new IP address
+    # 01. Checking fos new source IP addresses
     ip_list = list(set(df_success['source_ip']))
     for source_ip in ip_list:
+      log.debug(
+          f'[{self.NAME}] Checking authentication events from {source_ip}')
+  
       ip_summary = self.get_ip_summary(source_ip)
+      if not ip_summary:
+        log.info('[{self.NAME}] No IP summary for {source_ip}')
+        continue
 
       # We don't want to analyze source IP if successful authentication
       # was observed before the scope of last x-day analysis.
       if ip_summary.first_auth_timestamp < start_timestamp:
         log.debug(
-            f'first auth for {source_ip} was on'
-            f' {self.human_timestamp(ip_summary.first_auth_timestamp)} which is'
-            f' earlier than {self.human_timestamp(start_timestamp)}')
+            f'[{self.NAME}] First successful authentication from {source_ip}'
+            f' was on {self.human_timestamp(ip_summary.first_auth_timestamp)}'
+            f' which is earlier than {self.human_timestamp(start_timestamp)}')
         continue
 
+      # Processing source_ip address in the scope
       df2 = df_success[df_success['source_ip'] == source_ip]
-      for _, row in df2.iterrows():
-        results.append(
-            self.get_login_session(
-                source_ip=source_ip, domain=row['domain'],
-                username=row['username'], session_id=row['session_id']))
+      login_info = {
+        'type': 'source_ip',
+        'source_ip': source_ip,
+        'data': [],
+      }
 
-    return {'result': results}
+      login_data = []
+      for _, row in df2.iterrows():
+        login_data.append(self.get_login_session(
+            source_ip=source_ip, domain=row['domain'],
+            username=row['username'], session_id=row['session_id']))
+      login_info['data'] = login_data
+      analysis_data.append(login_info)
+
+    # 02. Checking for new username
+    # TODO(rmaskey): implement new user analysis
+    username_list = list(set(df_success['username']))
+    for username in username_list:
+      user_summary = self.get_user_summary(username=username)
+      if not user_summary:
+        log.info(f'[{self.NAME}] No user summary for {username}')
+        continue
+
+      # We don't want to analyze username if the username succesfully
+      # authenticated before last x-days.
+      if user_summary.first_auth_timestamp < start_timestamp:
+        log.debug(
+            f'[{self.NAME}] First successful authentication for {username} was'
+            f' on {self.human_timestamp(user_summary.first_auth_timestamp)}'
+            f' which is earlier than {self.human_timestamp(start_timestamp)}.'
+        )
+        continue
+
+      df2 = df_success[df_success['username'] == username]
+      login_info = {
+        'type': 'username',
+        'username': username,
+        'data': []
+      }
+
+      login_data = []
+      for _, row in df2.iterrows():
+        try:
+          login_session = self.get_login_session(
+              source_ip=row['source_ip'],
+              domain=row['domain'],
+              username=row['username'],
+              session_id=row['session_id'])
+          login_data.append(login_session)
+        except AttributeError as e:
+          log.error(str(e))
+      login_info['data'] = login_data
+      analysis_data.append(login_data)
+
+    return analysis_data
+
+  def generate_analyzer_output(
+      self, reports: List, success: bool, x_days: int = 7) -> dict:
+    """Generate analyzer output."""
+
+    analyzer_output = {
+        'platform': 'turbinia',
+        'analyzer_identifier': self.NAME,
+        'analyzer_name': self.DISPLAY_NAME,
+        'result_status': 'failure',
+        'dfiq_question_id': '',
+        'dfiq_question_conclusion': '',
+        'result_priority': 'LOW',
+        'result_summary': '',
+        'result_markdown': '',
+        'references': [],
+        'attributes': reports,
+    }
+
+    if not success:
+      return analyzer_output
+    analyzer_output['result_status'] = 'success'
+
+    # Generating result_summary and result_priority
+    if not reports:
+      analyzer_output['result_summary'] = 'No detection for last x-day analysis'
+      return analyzer_output
+
+    reports_count = len(reports)
+    analyzer_output['result_summary'] = (
+        f'{reports_count} suspicious login'
+        f' activity detected in last-x days analysis')
+    analyzer_output['result_priority'] = 'MEDIUM'
+
+    # Generating result_markdown
+    markdown = []
+    markdown.append('## Last X-Days Analysis\n')
+
+    for report in reports:
+      report_type = report.get('type')
+      if report_type == 'source_ip':
+        markdown.append(f'**New login from {report["source_ip"]}**')
+        try:
+          for login_session in report['data']:
+            markdown.append(
+                f'- Login as {login_session["username"]} at'
+                f' {self.human_timestamp(login_session["login_timestamp"])}'
+                f' for {login_session["session_duration"]}')
+        except:
+          markdown.append(f'- No detailed events. Unknown error')
+        markdown.append('')
+      elif report_type == 'username':
+        login_username = report.get('username') or 'NA'
+        markdown.append(f'**New login as {login_username}**')
+        try:
+          for login_session in report['data']:
+            markdown.append(f'- Login from {login_session["source_ip"]}'
+                f' at {self.human_timestamp(login_session["login_timestamp"])}'
+                f' for {login_session["session_duration"]}')
+        except:
+          markdown.append(f' - No detailed events. Unknown error')
+        markdown.append('')
+    analyzer_output['result_markdown'] = '\n'.join(markdown)
+
+    return analyzer_output
 
   def run(self, df: pd.DataFrame, x_days: int = 7) -> dict:
     """Entry point for the analyzer.
@@ -694,29 +837,15 @@ class LastXDaysAnalyzer(AuthAnalyzer):
       dict: Analyzer report
     """
     if df.empty:
-      raise AuthAnalyzerError('dataframe is empty')
+      raise AuthAnalyzerError('[{self.NAME}] Dataframe is empty')
 
     if not self.set_dataframe(df):
-      log.error(f'dataframe does not match the columns requirements')
+      log.error(
+          f'[{self.NAME}] Dataframe does not match the columns requirements')
       return {}
 
-    reports = []
-    report = self.login_analysis(x_days=x_days)
-    reports.append(report)
-
-    # Analyzer Output
-    analyzer_output = {
-        'platform': 'turbinia',
-        'analyzer_identifier': '',
-        'analyzer_name': self.NAME,
-        'result_status': '',
-        'dfiq_question_id': '',
-        'dfiq_question_conclusion': '',
-        'result_priority': '',
-        'result_summary': '',
-        'result_markdown': '',
-        'references': [],
-        'attributes': reports,
-    }
-
-    return analyzer_output
+    try:
+      reports = self.login_analysis(x_days=x_days)
+    except:
+      return self.generate_analyzer_output(reports=[], success=False)
+    return self.generate_analyzer_output(reports=reports, success=True)
